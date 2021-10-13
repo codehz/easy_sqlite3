@@ -446,9 +446,10 @@ proc getParameterIndex*(st: ref Statement, name: string): int =
   if result == 0:
     raise newException(SQLiteError, "Unknown parameter " & name)
 
+{.push inline.}
+
 proc `[]=`*(st: ref Statement, idx: int, blob: openarray[byte]) =
-  st.raw.check_sqlite_stmt sqlite3_bind_blob64(st.raw, idx, blob.unsafeAddr,
-      blob.len, TransientDestructor)
+  st.raw.check_sqlite_stmt sqlite3_bind_blob64(st.raw, idx, blob.unsafeAddr, blob.len, TransientDestructor)
 
 proc `[]=`*(st: ref Statement, idx: int, val: SomeFloat) =
   st.raw.check_sqlite_stmt sqlite3_bind_double(st.raw, idx, float64 val)
@@ -465,7 +466,7 @@ proc `[]=`*(st: ref Statement, idx: int, val: string) =
 proc reset*(st: ref Statement) =
   st.raw.check_sqlite_stmt sqlite3_reset(st.raw)
 
-proc step*(st: ref Statement): bool =
+proc step*(st: ref Statement): bool {.inline.} =
   let res = sqlite3_step(st.raw)
   case res:
   of sr_row: true
@@ -489,12 +490,10 @@ proc getColumn*(st: ref Statement, idx: int, T: typedesc[seq[byte]]): seq[byte] 
   result = newSeq[byte]l
   copyMem(addr result[0], p, l)
 
-proc getColumn*(st: ref Statement, idx: int, T: typedesc[
-    SomeFloat]): SomeFloat =
+proc getColumn*(st: ref Statement, idx: int, T: typedesc[SomeFloat]): SomeFloat =
   cast[T](sqlite3_column_double(st.raw, idx))
 
-proc getColumn*(st: ref Statement, idx: int, T: typedesc[
-    SomeOrdinal]): SomeOrdinal =
+proc getColumn*(st: ref Statement, idx: int, T: typedesc[SomeOrdinal]): SomeOrdinal =
   cast[T](sqlite3_column_int64(st.raw, idx))
 
 proc getColumn*(st: ref Statement, idx: int, T: typedesc[string]): string =
@@ -514,6 +513,8 @@ proc unpack*[T: tuple](st: ref Statement, _: typedesc[T]): T =
   for value in result.fields:
     value = st.getColumn(idx, type(value))
     idx.inc
+
+{.pop.}
 
 proc exec*(db: var Database, sql: string): int {.discardable.} =
   var st = db.fetchStatement(sql)

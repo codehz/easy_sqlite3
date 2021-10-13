@@ -33,6 +33,7 @@ test "full":
   db.create_table()
   for name, value in dataset:
     db.insert_data name, value
+  db.exec "VACUUM"
   for name, value in db.iterate_data():
     check name in dataset
     check dataset[name] == value

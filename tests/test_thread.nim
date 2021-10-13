@@ -28,6 +28,7 @@ proc connectDatabase(): Database =
 
 var gdb = connectDatabase()
 gdb.create_table()
+gdb.exec "VACUUM"
 
 const COUNT = 100000
 
@@ -38,7 +39,7 @@ proc worker_fn() {.thread.} =
   for _ in 0..<COUNT:
     let val = r.rand(1048576)
     # increase the chance of collision
-    if val < 1024:
+    if val > 1024:
       sleep(1)
     when useMemFs:
       tdb.insert_data(val)
