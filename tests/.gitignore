@@ -2,3 +2,4 @@
 !nim.cfg
 !test_*.nim
 !.gitignore
+!config.nims
