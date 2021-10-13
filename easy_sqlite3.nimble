@@ -2,7 +2,7 @@
 
 version       = "0.1.0"
 author        = "CodeHz"
-description   = "A new awesome nimble package"
+description   = "Yet another SQLite wrapper for Nim"
 license       = "MIT"
 srcDir        = "src"
 
