@@ -27,7 +27,7 @@ proc origvt(file: ptr SqliteFile): ptr SqliteIoMethods =
 proc `origvt=`(file: ptr SqliteFile, value: ptr SqliteIoMethods) =
   file.appended.origvt = value
 
-{.push warning:off.}
+{.push warnings:off.}
 logvfs.open = proc (vfs: ptr SqliteVFS, name: cstring, file: ptr SqliteFile, flags: OpenFlags, outflags: ptr OpenFlags): ResultCode {.cdecl.} =
   echo fmt"open {name} ({flags})"
   result = defaultvfs.open(defaultvfs, name, file, flags, outflags)
