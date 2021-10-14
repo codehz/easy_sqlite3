@@ -161,7 +161,7 @@ proc genUpdateProcedure(sql: string, body: NimNode): NimNode =
         )
       ifbody.addTree(nnkElse, elsebody):
         elsebody.add nnkReturnStmt.newTree(
-          nnkCall.newTree(nnkDotExpr.newTree(db_ident, bindSym "last_insert_rowid"))
+          nnkCall.newTree(nnkDotExpr.newTree(db_ident, bindSym "lastInsertRowid"))
         )
 
 proc genCreateProcedure(sql: string, body: NimNode): NimNode =

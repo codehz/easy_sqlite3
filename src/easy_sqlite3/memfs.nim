@@ -402,4 +402,4 @@ memios.shmbarrier = proc (file: ptr SqliteFile) {.cdecl.} = fence()
 
 memios.shmunmap = proc (file: ptr SqliteFile, delete: bool): ResultCode {.cdecl.} = discard
 
-check_sqlite sqlite3_vfs_register(addr memvfs, true)
+sqliteCheck sqlite3_vfs_register(addr memvfs, true)

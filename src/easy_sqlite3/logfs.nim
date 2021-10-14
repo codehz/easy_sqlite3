@@ -117,4 +117,4 @@ logvtb.shmunmap = proc (file: ptr SqliteFile, delete: bool): ResultCode {.cdecl.
   echo fmt"shmunmap {file.name} ({delete})"
   file.origvt.shmunmap(file, delete)
 
-check_sqlite sqlite3_vfs_register(logvfs.addr, true)
+sqliteCheck sqlite3_vfs_register(logvfs.addr, true)

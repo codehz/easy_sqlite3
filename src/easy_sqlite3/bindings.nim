@@ -376,43 +376,43 @@ proc newSQLiteError*(db: ptr RawDatabase): ref SQLiteError =
 proc newSQLiteError*(db: ptr RawStatement): ref SQLiteError =
   newException(SQLiteError, $sqlite3_errmsg sqlite3_db_handle db)
 
-template check_sqlite*(res: ResultCode) =
+template sqliteCheck*(res: ResultCode) =
   let tmp = res
   if tmp != ResultCode.sr_ok:
     raise newSQLiteError tmp
 
-template check_sqlite_db*(db: ptr RawDatabase, res: ResultCode) =
+template sqliteCheck*(db: ptr RawDatabase, res: ResultCode) =
   let tmp = res
   if tmp != ResultCode.sr_ok:
     raise newSQLiteError db
 
-template check_sqlite_stmt*(st: ptr RawStatement, res: ResultCode) =
+template sqliteCheck*(st: ptr RawStatement, res: ResultCode) =
   let tmp = res
   if tmp != ResultCode.sr_ok:
     raise newSQLiteError st
 
 proc `=destroy`*(st: var Statement) =
   if st.raw != nil:
-    check_sqlite sqlite3_finalize st.raw
+    sqliteCheck sqlite3_finalize st.raw
 
-disallow_copy Statement
+preventCopy Statement
 
 proc `=destroy`*(db: var Database) =
   if db.raw != nil:
     db.stmtcache.clear()
-    check_sqlite sqlite3_close_v2 db.raw
+    sqliteCheck sqlite3_close_v2 db.raw
 
-disallow_copy Database
+preventCopy Database
 
 proc enableSharedCache*(enabled: bool = true) =
-  check_sqlite sqlite3_enable_shared_cache(if enabled: 1 else: 0)
+  sqliteCheck sqlite3_enable_shared_cache(if enabled: 1 else: 0)
 
 proc initDatabase*(
   filename: string,
   flags: OpenFlags = {so_readwrite, so_create},
   vfs: cstring = nil
 ): Database =
-  check_sqlite sqlite3_open_v2(filename, addr result.raw, flags, vfs)
+  sqliteCheck sqlite3_open_v2(filename, addr result.raw, flags, vfs)
   result.stmtcache = initTable[CachedHash[string], ref Statement]()
 
 proc changes*(st: var Database): int =
@@ -422,7 +422,7 @@ proc changes*(st: ref Statement): int =
   sqlite3_changes sqlite3_db_handle st.raw
 
 proc initStatement*(db: var Database, sql: string, flags: PrepareFlags = {}): Statement =
-  check_sqlite_db db.raw, sqlite3_prepare_v3(db.raw, sql, sql.len, flags,
+  sqliteCheck db.raw, sqlite3_prepare_v3(db.raw, sql, sql.len, flags,
       addr result.raw, nil)
 
 proc fetchStatement*(db: var Database, sql: string): ref Statement =
@@ -451,22 +451,22 @@ proc getParameterIndex*(st: ref Statement, name: string): int =
 {.push inline.}
 
 proc `[]=`*(st: ref Statement, idx: int, blob: openarray[byte]) =
-  st.raw.check_sqlite_stmt sqlite3_bind_blob64(st.raw, idx, blob.unsafeAddr, blob.len, TransientDestructor)
+  st.raw.sqliteCheck sqlite3_bind_blob64(st.raw, idx, blob.unsafeAddr, blob.len, TransientDestructor)
 
 proc `[]=`*(st: ref Statement, idx: int, val: SomeFloat) =
-  st.raw.check_sqlite_stmt sqlite3_bind_double(st.raw, idx, float64 val)
+  st.raw.sqliteCheck sqlite3_bind_double(st.raw, idx, float64 val)
 
 proc `[]=`*(st: ref Statement, idx: int, val: SomeOrdinal) =
-  st.raw.check_sqlite_stmt sqlite3_bind_int64(st.raw, idx, cast[int64](val))
+  st.raw.sqliteCheck sqlite3_bind_int64(st.raw, idx, cast[int64](val))
 
 proc `[]=`*(st: ref Statement, idx: int, val: type(nil)) =
-  st.raw.check_sqlite_stmt sqlite3_bind_null(st.raw, idx)
+  st.raw.sqliteCheck sqlite3_bind_null(st.raw, idx)
 
 proc `[]=`*(st: ref Statement, idx: int, val: string) =
-  st.raw.check_sqlite_stmt sqlite3_bind_text(st.raw, idx, val, int32 val.len, TransientDestructor)
+  st.raw.sqliteCheck sqlite3_bind_text(st.raw, idx, val, int32 val.len, TransientDestructor)
 
 proc reset*(st: ref Statement) =
-  st.raw.check_sqlite_stmt sqlite3_reset(st.raw)
+  st.raw.sqliteCheck sqlite3_reset(st.raw)
 
 proc step*(st: ref Statement): bool {.inline.} =
   let res = sqlite3_step(st.raw)
@@ -475,7 +475,7 @@ proc step*(st: ref Statement): bool {.inline.} =
   of sr_done: false
   else: raise newSQLiteError(st.raw)
 
-proc last_insert_rowid*(st: var Database): int =
+proc lastInsertRowid*(st: var Database): int =
   sqlite3_last_insert_rowid(st.raw)
 
 proc withColumnBlob*(st: ref Statement, idx: int, recv: proc(vm: openarray[byte])) =

@@ -1,6 +1,6 @@
 import std/macros
 
-template disallow_copy*(T: untyped): untyped =
+template preventCopy*(T: untyped): untyped =
   proc `=copy`*(l: var T, r: T) {.error.}
 
 template genTree*(kind: NimNodeKind, local, body: untyped): NimNode =
