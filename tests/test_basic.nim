@@ -4,6 +4,7 @@ import easy_sqlite3
 import easy_sqlite3/[memfs, logfs]
 
 proc select_1(arg: int): tuple[value: int] {.importdb: "SELECT $arg".}
+proc select_2(arg1, arg2: int): tuple[value: int, value2: int] {.importdb: "SELECT $arg1, $arg2".}
 
 proc insert_data(name: string, value: int) {.importdb: """
   INSERT INTO mydata(name, value) VALUES ($name, $value);
@@ -18,6 +19,10 @@ proc count_data(): tuple[count: int] {.importdb: "SELECT count(*) FROM mydata".}
 test "simple":
   var db = initDatabase(":memory:")
   check db.select_1(1) == (value: 1)
+
+test "multiple":
+  var db = initDatabase(":memory:")
+  check db.select_2(1, 2) == (value: 1, value2: 2)
 
 test "full":
   const dataset = {

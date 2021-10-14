@@ -26,20 +26,21 @@ proc injectDbFetch(procbody: var NimNode, sql: string, db_ident, st_ident: NimNo
 proc injectDbArguments(procbody: var NimNode, body, st_ident: NimNode): seq[tuple[name: string, idxnode, param: NimNode]] =
   result = newSeq[tuple[name: string, idxnode, param: NimNode]]()
   procbody.addTree(nnkVarSection, varsec):
-    for arg in body[3][1..^1]:
-      let arg_name = $arg[0]
-      let arg_ident = genSym(nskVar, arg_name & "_idx")
-      result.add (name: arg_name, idxnode: arg_ident, param: arg[0])
-      varsec.add nnkIdentDefs.newTree(
-        nnkPragmaExpr.newTree(
-          arg_ident,
-          nnkPragma.newTree(
-            ident "threadvar"
-          )
-        ),
-        ident "int",
-        newEmptyNode()
-      )
+    for args in body[3][1..^1]:
+      for arg in args[0..^3]:
+        let arg_name = $arg
+        let arg_ident = genSym(nskVar, arg_name & "_idx")
+        result.add (name: arg_name, idxnode: arg_ident, param: arg)
+        varsec.add nnkIdentDefs.newTree(
+          nnkPragmaExpr.newTree(
+            arg_ident,
+            nnkPragma.newTree(
+              ident "threadvar"
+            )
+          ),
+          ident "int",
+          newEmptyNode()
+        )
   for it in result:
     procbody.add nnkIfStmt.newTree(
       nnkElifBranch.newTree(
