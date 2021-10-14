@@ -209,35 +209,57 @@ proc db_begin() {.importdb: "BEGIN".}
 proc db_commit() {.importdb: "COMMIT".}
 proc db_rollback() {.importdb: "ROLLBACK".}
 
-type Transaction*[Origin: ptr Database | ref Database] = object
-  origin: Origin
-  done: bool
+# type Transaction* = object
+#   origin: ptr Database
 
-proc `=destroy`*[Origin: ptr Database | ref Database](tran: var Transaction[Origin]) =
-  assert tran.origin != nil
-  if not tran.done:
-    tran.origin[].db_rollback()
+# proc `=destroy`*(tran: var Transaction) =
+#   if tran.origin != nil:
+#     tran.origin[].db_rollback()
 
-proc `=copy`*[Origin: ptr Database | ref Database](tran: var Transaction[Origin], rhs: Transaction[Origin]) {.error.}
+# proc `=copy`*(tran: var Transaction, rhs: Transaction) {.error: "You should not copy transaction".}
 
-proc initTransaction*(db: var Database): Transaction[ptr Database] =
-  db.db_begin()
-  result.origin = addr db
-  result.done = false
+# proc initTransaction*(db: var Database): Transaction =
+#   db.db_begin()
+#   result.origin = addr db
 
-proc initTransaction*(db: ref Database): Transaction[ref Database] =
-  db[].db_begin()
-  result.origin = db
-  result.done = false
+# proc commit*(tran: var Transaction) =
+#   if tran.origin != nil:
+#     tran.origin[].db_commit()
+#     wasMoved(tran)
 
-proc commit*[Origin: ptr Database | ref Database](tran: var Transaction[Origin]) =
-  assert tran.origin != nil
-  assert !tran.done
-  tran.done = true
-  tran.origin[].db_commit()
+# proc rollback*(tran: var Transaction) =
+#   if tran.origin != nil:
+#     tran.origin[].db_rollback()
+#     wasMoved(tran)
 
-proc rollback*[Origin: ptr Database | ref Database](tran: var Transaction[Origin]) =
-  assert tran.origin != nil
-  assert !tran.done
-  tran.done = true
-  tran.origin[].db_rollback()
+template transaction*(db: var Database, body: untyped): untyped =
+  db_begin db
+  block outer:
+    var cached_exception: ref Exception
+    block inner:
+      try:
+        template commit() {.inject, used.} =
+          try:
+            db_commit db
+            break outer
+          except:
+            cached_exception = getCurrentException()
+            break inner
+        template rollback() {.inject, used.} =
+          try:
+            db_rollback db
+            break outer
+          except:
+            cached_exception = getCurrentException()
+            break inner
+        body
+        try:
+          commit()
+        except:
+          cached_exception = getCurrentException()
+          break inner
+      except:
+        db_rollback db
+        raise getCurrentException()
+    if cached_exception != nil:
+      raise cached_exception

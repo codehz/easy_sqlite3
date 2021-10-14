@@ -6,7 +6,7 @@ import easy_sqlite3/[memfs, logfs]
 proc select_1(arg: int): tuple[value: int] {.importdb: "SELECT $arg".}
 
 proc create_table() {.importdb: """
-  CREATE TABLE mydata(name TEXT PRIMARY KEY NOT NULL, value INT NOT NULL);
+  CREATE TABLE mydata(name TEXT PRIMARY KEY NOT NULL, value INT NOT NULL) WITHOUT ROWID;
 """.}
 
 proc insert_data(name: string, value: int) {.importdb: """
@@ -16,6 +16,8 @@ proc insert_data(name: string, value: int) {.importdb: """
 iterator iterate_data(): tuple[name: string, value: int] {.importdb: """
   SELECT name, value FROM mydata;
 """.} = discard
+
+proc count_data(): tuple[count: int] {.importdb: "SELECT count(*) FROM mydata".}
 
 test "simple":
   var db = initDatabase(":memory:")
@@ -31,9 +33,11 @@ test "full":
   var db = initDatabase("test")
   db.exec "PRAGMA journal_mode=DELETE"
   db.create_table()
-  for name, value in dataset:
-    db.insert_data name, value
+  db.transaction:
+    for name, value in dataset:
+      db.insert_data name, value
   db.exec "VACUUM"
   for name, value in db.iterate_data():
     check name in dataset
     check dataset[name] == value
+  check db.count_data() == (count: dataset.len)

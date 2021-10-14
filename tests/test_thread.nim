@@ -5,9 +5,21 @@ import easy_sqlite3/memfs
 
 const useMemFs = true
 
-when not useMemFs:
+when useMemFs:
+  template retry(body: untyped) = body
+else:
   enableSharedCache()
   var failedCount = 0
+  template retry(body: untyped) =
+    var failed = 0
+    while true:
+      try:
+        body
+        break
+      except:
+        failed.inc
+    if failed > 0:
+      failedCount.atomicInc(failed)
 
 proc create_table() {.importdb: """
   CREATE TABLE store(key INTEGER PRIMARY KEY, value INT NOT NULL);
@@ -30,30 +42,22 @@ var gdb = connectDatabase()
 gdb.create_table()
 gdb.exec "VACUUM"
 
-const COUNT = 100000
+const COUNT = 1000000
+const GROUP = 100
 
 proc worker_fn() {.thread.} =
   echo "thread start"
   var tdb = connectDatabase()
   var r = initRand(42)
-  for _ in 0..<COUNT:
-    let val = r.rand(1048576)
-    # increase the chance of collision
-    if val < 1024:
-      sleep(1)
-    when useMemFs:
-      tdb.insert_data(val)
-    else:
-      var failed = 0
-      block retry:
-        while true:
-          try:
-            tdb.insert_data(val)
-            break retry
-          except:
-            failed.inc
-      if failed > 0:
-        failedCount.atomicInc(failed)
+  for _ in 0..<(COUNT div GROUP):
+    retry:
+      tdb.transaction:
+        for _ in 0..<GROUP:
+          let val = r.rand(1048576)
+          # increase the chance of collision
+          if val < 1024:
+            sleep(1)
+          tdb.insert_data(val)
 
 var worker: Thread[void]
 createThread(worker, worker_fn)
@@ -61,21 +65,23 @@ createThread(worker, worker_fn)
 let init = cpuTime()
 var prev = init
 while true:
-  let c = gdb.count_items().count
+  var c: int
+  retry:
+    c = gdb.count_items().count
   let curr = cpuTime()
   let diff = curr - prev - 0.2
   if diff > 0:
     when useMemFs:
-      echo fmt"{curr - init:>6.1f}s: {c:<6}"
+      echo fmt"{curr - init:>6.1f}s: {c:>7}"
     else:
-      echo fmt"{curr - init:>6.1f}s: {c:<6} failures: {failedCount}"
+      echo fmt"{curr - init:>6.1f}s: {c:>7} failures: {failedCount}"
     prev = curr - diff
   if c == COUNT:
     break
 
 when useMemFs:
-  echo fmt"time: {cpuTime() - init:>9.5f}s"
+  echo fmt"time: {cpuTime() - init:>9.4f}s"
 else:
-  echo fmt"time: {cpuTime() - init:>9.5f}s failures: {failedCount}"
+  echo fmt"time: {cpuTime() - init:>9.4f}s failures: {failedCount}"
 
 worker.joinThread()
