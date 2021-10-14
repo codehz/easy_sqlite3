@@ -139,7 +139,8 @@ type ResultCode* {.pure.} = enum
   sr_ioerr_rollback_atomic   = 7946,
   sr_ioerr_data              = 8202
 
-type SQLiteError* = object of IOError
+type SQLiteError* = object of CatchableError
+  code: Option[ResultCode]
 
 type SQLiteBlob* = object
   raw: ptr UncheckedArray[byte]
@@ -366,7 +367,8 @@ proc sqlite3_column_value*(st: ptr RawStatement, idx: int): ptr RawValue {.impor
 {.pop.}
 
 proc newSQLiteError*(code: ResultCode): ref SQLiteError =
-  newException(SQLiteError, $sqlite3_errstr code)
+  result = newException(SQLiteError, $sqlite3_errstr code)
+  result.code = some code
 
 proc newSQLiteError*(db: ptr RawDatabase): ref SQLiteError =
   newException(SQLiteError, $sqlite3_errmsg db)
