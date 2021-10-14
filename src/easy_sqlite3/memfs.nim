@@ -11,7 +11,7 @@ const
   SHM_PAGE_SIZE = 32768
 
 type
-  FileKind = enum
+  FileKind* = enum
     fk_main
     fk_temp
     fk_transient
@@ -38,6 +38,11 @@ type
     fileLock: Lock
     state: SqliteLockLevel
     shareds: int
+  MemoryFileStat* = object
+    name*: string
+    kind*: FileKind
+    size*: int
+    refc*: int
   MemoryFileInfo = object
     base: SqliteFile
     data: ptr MemoryFile
@@ -144,6 +149,21 @@ proc writeBuffer(self: ptr MemoryFile, buffer: ptr UncheckedArray[byte], length:
     p[] = buffer[i]
 
 var root = initTable[string, ptr MemoryFile]()
+
+iterator listMemfs*(): MemoryFileStat =
+  glock.withLock:
+    for name, file in root:
+      yield MemoryFileStat(name: name, kind: file.kind, size: file.size, refc: file.refc)
+
+proc removeMemoryFile*(name: string): bool =
+  glock.withLock:
+    root.withValue(name, file) do:
+      if file.refc != 0:
+        return false
+      `=destroy` file[]
+      dealloc file
+      root.del name
+  return true
 
 proc getMemoryFile(cname: cstring, filekind: FileKind): ptr MemoryFile =
   let name = $cname
