@@ -51,7 +51,7 @@ proc worker_fn() {.thread.} =
   var r = initRand(42)
   for _ in 0..<(COUNT div GROUP):
     retry:
-      tdb.transaction:
+      tdb.transactionImmediate:
         for _ in 0..<GROUP:
           let val = r.rand(1048576)
           # increase the chance of collision

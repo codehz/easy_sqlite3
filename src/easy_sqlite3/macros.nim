@@ -205,12 +205,14 @@ macro importdb*(sql: static string, body: untyped) =
     error("Expected proc or iterator, got " & $body.kind, body)
     return
 
-proc db_begin() {.importdb: "BEGIN".}
+proc db_begin_deferred() {.importdb: "BEGIN DEFERRED".}
+proc db_begin_immediate() {.importdb: "BEGIN IMMEDIATE".}
+proc db_begin_exclusive() {.importdb: "BEGIN EXCLUSIVE".}
 proc db_commit() {.importdb: "COMMIT".}
 proc db_rollback() {.importdb: "ROLLBACK".}
 
-template transaction*(db: var Database, body: untyped): untyped =
-  db_begin db
+template gen_transaction(db: var Database, begin_stmt, body: untyped): untyped =
+  begin_stmt db
   block outer:
     template commit() {.inject, used.} =
       db_commit db
@@ -225,3 +227,12 @@ template transaction*(db: var Database, body: untyped): untyped =
       except:
         db_rollback db
         raise getCurrentException()
+
+template transaction*(db: var Database, body: untyped): untyped =
+  gen_transaction db, db_begin_deferred, body
+
+template transactionImmediate*(db: var Database, body: untyped): untyped =
+  gen_transaction db, db_begin_immediate, body
+
+template transactionExclusive*(db: var Database, body: untyped): untyped =
+  gen_transaction db, db_begin_exclusive, body
