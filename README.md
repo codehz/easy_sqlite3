@@ -4,6 +4,7 @@ Features:
 
 1. Design for ARC/ORC, no need manually close connection
 2. Use `importdb` macro to create helper function (see examples)
+3. Including a memfs implemention (may better than `:memory:` database since it support WAL mode)
 
 ## Example
 
@@ -44,8 +45,12 @@ const dataset = {
   "D": 3,
 }.toTable
 db.create_table()
-for name, value in dataset:
-  db.insert_data name, value
+# Use transaction (commit by default)
+db.transaction:
+  for name, value in dataset:
+    db.insert_data name, value
+  commit() # optional
+  # Never goes here
 
 for name, value in db.iterate_data():
   assert name in dataset
