@@ -5,10 +5,6 @@ import easy_sqlite3/[memfs, logfs]
 
 proc select_1(arg: int): tuple[value: int] {.importdb: "SELECT $arg".}
 
-proc create_table() {.importdb: """
-  CREATE TABLE mydata(name TEXT PRIMARY KEY NOT NULL, value INT NOT NULL) WITHOUT ROWID;
-""".}
-
 proc insert_data(name: string, value: int) {.importdb: """
   INSERT INTO mydata(name, value) VALUES ($name, $value);
 """.}
@@ -31,8 +27,10 @@ test "full":
     "D": 3,
   }.toTable
   var db = initDatabase("test")
-  db.exec "PRAGMA journal_mode=DELETE"
-  db.create_table()
+  db.execM(
+    "PRAGMA journal_mode=DELETE",
+    "CREATE TABLE mydata(name TEXT PRIMARY KEY NOT NULL, value INT NOT NULL) WITHOUT ROWID;"
+  )
   db.transaction:
     for name, value in dataset:
       db.insert_data name, value

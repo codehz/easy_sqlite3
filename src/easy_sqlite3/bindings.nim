@@ -421,7 +421,8 @@ proc changes*(st: var Database): int =
 proc changes*(st: ref Statement): int =
   sqlite3_changes sqlite3_db_handle st.raw
 
-proc initStatement*(db: var Database, sql: string, flags: PrepareFlags = {}): Statement =
+proc newStatement*(db: var Database, sql: string, flags: PrepareFlags = {}): ref Statement =
+  new result
   sqliteCheck db.raw, sqlite3_prepare_v3(db.raw, sql, sql.len, flags,
       addr result.raw, nil)
 
@@ -430,8 +431,7 @@ proc fetchStatement*(db: var Database, sql: string): ref Statement =
   db.stmtcache.withValue(rhash, value) do:
     return value[]
   do:
-    new result
-    result[] = db.initStatement(sql, {sp_persistent})
+    result = db.newStatement(sql, {sp_persistent})
     db.stmtcache[rhash] = result
 
 proc fetchStatement*(db: var Database, sql: static[string]): ref Statement =
@@ -439,8 +439,7 @@ proc fetchStatement*(db: var Database, sql: static[string]): ref Statement =
   db.stmtcache.withValue(chash, value) do:
     return value[]
   do:
-    new result
-    result[] = db.initStatement(sql, {sp_persistent})
+    result = db.newStatement(sql, {sp_persistent})
     db.stmtcache[chash] = result
 
 proc getParameterIndex*(st: ref Statement, name: string): int =
@@ -518,8 +517,21 @@ proc unpack*[T: tuple](st: ref Statement, _: typedesc[T]): T =
 
 {.pop.}
 
-proc exec*(db: var Database, sql: string): int {.discardable.} =
-  var st = db.fetchStatement(sql)
-  defer: st.reset()
+proc exec*(db: var Database, sql: string, cache: static bool = true): int {.discardable.} =
+  when cache:
+    let st = db.fetchStatement(sql)
+    defer: st.reset()
+  else:
+    let st = db.newStatement(sql)
   if st.step():
     result = st.getColumn(0, int)
+
+proc execM*(db: var Database, sqls: varargs[string]) {.discardable.} =
+  discard db.exec "BEGIN IMMEDIATE"
+  try:
+    for sql in sqls:
+      discard db.exec(sql, cache = false)
+    discard db.exec "COMMIT"
+  except:
+    discard db.exec "ROLLBACK"
+    raise getCurrentException()
