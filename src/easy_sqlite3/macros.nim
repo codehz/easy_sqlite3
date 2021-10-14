@@ -209,57 +209,19 @@ proc db_begin() {.importdb: "BEGIN".}
 proc db_commit() {.importdb: "COMMIT".}
 proc db_rollback() {.importdb: "ROLLBACK".}
 
-# type Transaction* = object
-#   origin: ptr Database
-
-# proc `=destroy`*(tran: var Transaction) =
-#   if tran.origin != nil:
-#     tran.origin[].db_rollback()
-
-# proc `=copy`*(tran: var Transaction, rhs: Transaction) {.error: "You should not copy transaction".}
-
-# proc initTransaction*(db: var Database): Transaction =
-#   db.db_begin()
-#   result.origin = addr db
-
-# proc commit*(tran: var Transaction) =
-#   if tran.origin != nil:
-#     tran.origin[].db_commit()
-#     wasMoved(tran)
-
-# proc rollback*(tran: var Transaction) =
-#   if tran.origin != nil:
-#     tran.origin[].db_rollback()
-#     wasMoved(tran)
-
 template transaction*(db: var Database, body: untyped): untyped =
   db_begin db
   block outer:
-    var cached_exception: ref Exception
+    template commit() {.inject, used.} =
+      db_commit db
+      break outer
+    template rollback() {.inject, used.} =
+      db_rollback db
+      break outer
     block inner:
       try:
-        template commit() {.inject, used.} =
-          try:
-            db_commit db
-            break outer
-          except:
-            cached_exception = getCurrentException()
-            break inner
-        template rollback() {.inject, used.} =
-          try:
-            db_rollback db
-            break outer
-          except:
-            cached_exception = getCurrentException()
-            break inner
         body
-        try:
-          commit()
-        except:
-          cached_exception = getCurrentException()
-          break inner
+        commit()
       except:
         db_rollback db
         raise getCurrentException()
-    if cached_exception != nil:
-      raise cached_exception

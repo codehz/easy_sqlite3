@@ -3,7 +3,7 @@ import std/[tables, random, os, times, strformat]
 import easy_sqlite3
 import easy_sqlite3/memfs
 
-const useMemFs = true
+const useMemFs = not defined(defaultMemoryDB)
 
 when useMemFs:
   template retry(body: untyped) = body
@@ -58,6 +58,8 @@ proc worker_fn() {.thread.} =
           if val < 1024:
             sleep(1)
           tdb.insert_data(val)
+        retry:
+          commit()
 
 var worker: Thread[void]
 createThread(worker, worker_fn)
