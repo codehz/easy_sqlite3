@@ -2,9 +2,9 @@
 
 Features:
 
-1. Design for ARC/ORC, no need manually close connection
+1. Design for ARC/ORC, you don’t need to close the connection manually
 2. Use `importdb` macro to create helper function (see examples)
-3. Including a memfs implemention (may better than `:memory:` database since it support WAL mode)
+3. Including a memfs implemention， may better than `:memory:` database since it support WAL mode (Experimental, see tests/test_thread)
 
 ## Example
 
