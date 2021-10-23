@@ -1,17 +1,45 @@
 import std/[tables, options, hashes]
 import ./utils
+import std/macros
 
-when defined(windows):
-  when defined(nimOldDlls):
-    const sqlite3dll = "sqlite3.dll"
-  elif defined(cpu64):
-    const sqlite3dll = "sqlite3_64.dll"
+when not defined(bundled_sqlite3):
+  when defined(windows):
+    when defined(nimOldDlls):
+      const sqlite3dll = "sqlite3.dll"
+    elif defined(cpu64):
+      const sqlite3dll = "sqlite3_64.dll"
+    else:
+      const sqlite3dll = "sqlite3_32.dll"
+  elif defined(macosx):
+    const sqlite3dll = "libsqlite3(|.0).dylib"
   else:
-    const sqlite3dll = "sqlite3_32.dll"
-elif defined(macosx):
-  const sqlite3dll = "libsqlite3(|.0).dylib"
+    const sqlite3dll = "libsqlite3.so(|.0)"
+  macro sqlite3linkage(f: untyped) =
+    if f[4].kind == nnkEmpty:
+      f[4] = newTree nnkPragma
+    f[4].add newColonExpr(ident "dynlib", newLit sqlite3dll)
+    f[4].add ident "importc"
+    f
 else:
-  const sqlite3dll = "libsqlite3.so(|.0)"
+  {.compile(
+    "../../bundled/sqlite3.c",
+    """
+    -DSQLITE_ENABLE_FTS5=1
+    -DSQLITE_ENABLE_RTREE=1
+    -DSQLITE_ENABLE_GEOPOLY=1
+    -DSQLITE_ENABLE_DBSTAT_VTAB=1
+    -DSQLITE_ENABLE_JSON1=1
+    -DSQLITE_ENABLE_RBU=1
+    -DSQLITE_OMIT_DEPRECATED=1
+    -DSQLITE_ENABLE_MATH_FUNCTIONS=1
+    -DSQLITE_DQS=0
+    """
+  ).}
+  macro sqlite3linkage(f: untyped) =
+    if f[4].kind == nnkEmpty:
+      f[4] = newTree nnkPragma
+    f[4].add ident "importc"
+    f
 
 type RawDatabase* = object
 type RawStatement* = object
@@ -324,47 +352,45 @@ type
     fetch*      : proc (file: ptr SqliteFile, offset: int64, amt: cint, pp: var pointer): ResultCode {.cdecl.}
     unfetch*    : proc (file: ptr SqliteFile, offset: int64, p: pointer): ResultCode {.cdecl.}
 
-{.push dynlib: sqlite3dll.}
-proc sqlite3_auto_extension*(entry: pointer): ResultCode {.importc.}
-proc sqlite3_vfs_find*(name: cstring): ptr SqliteVFS {.importc.}
-proc sqlite3_vfs_register*(vfs: ptr SqliteVFS, default: bool): ResultCode {.importc.}
-proc sqlite3_malloc*(size: cint): pointer {.importc.}
-proc sqlite3_malloc64*(size: uint64): pointer {.importc.}
-proc sqlite3_realloc*(src: pointer, size: cint): pointer {.importc.}
-proc sqlite3_realloc64*(src: pointer, size: uint64): pointer {.importc.}
-proc sqlite3_free*(src: pointer) {.importc.}
-proc sqlite3_msize*(src: pointer): uint64 {.importc.}
-proc sqlite3_mprintf*(fmt: cstring): cstring {.importc, varargs.}
-proc sqlite3_snprintf*(size: cint, target: cstring, fmt: cstring): cstring {.importc, varargs.}
-proc sqlite3_errmsg*(db: ptr RawDatabase): cstring {.importc.}
-proc sqlite3_errstr*(code: ResultCode): cstring {.importc.}
-proc sqlite3_db_handle*(st: ptr RawStatement): ptr RawDatabase {.importc.}
-proc sqlite3_enable_shared_cache*(enabled: int): ResultCode {.importc.}
-proc sqlite3_open_v2*(filename: cstring, db: ptr ptr RawDatabase, flags: OpenFlags, vfs: cstring): ResultCode {.importc.}
-proc sqlite3_close_v2*(db: ptr RawDatabase): ResultCode {.importc.}
-proc sqlite3_prepare_v3*(db: ptr RawDatabase, sql: cstring, nbyte: int, flags: PrepareFlags, pstmt: ptr ptr RawStatement, tail: ptr cstring): ResultCode {.importc.}
-proc sqlite3_finalize*(st: ptr RawStatement): ResultCode {.importc.}
-proc sqlite3_reset*(st: ptr RawStatement): ResultCode {.importc.}
-proc sqlite3_step*(st: ptr RawStatement): ResultCode {.importc.}
-proc sqlite3_bind_parameter_index*(st: ptr RawStatement, name: cstring): int {.importc.}
-proc sqlite3_bind_blob64*(st: ptr RawStatement, idx: int, buffer: pointer, len: int, free: SqliteDestroctor): ResultCode {.importc.}
-proc sqlite3_bind_double*(st: ptr RawStatement, idx: int, value: float64): ResultCode {.importc.}
-proc sqlite3_bind_int64*(st: ptr RawStatement, idx: int, val: int64): ResultCode {.importc.}
-proc sqlite3_bind_null*(st: ptr RawStatement, idx: int): ResultCode {.importc.}
-proc sqlite3_bind_text*(st: ptr RawStatement, idx: int, val: cstring, len: int32, free: SqliteDestroctor): ResultCode {.importc.}
-proc sqlite3_bind_value*(st: ptr RawStatement, idx: int, val: ptr RawValue): ResultCode {.importc.}
-proc sqlite3_bind_pointer*(st: ptr RawStatement, idx: int, val: pointer, name: cstring, free: SqliteDestroctor): ResultCode {.importc.}
-proc sqlite3_bind_zeroblob64*(st: ptr RawStatement, idx: int, len: int): ResultCode {.importc.}
-proc sqlite3_changes*(st: ptr RawDatabase): int {.importc.}
-proc sqlite3_last_insert_rowid*(st: ptr RawDatabase): int {.importc.}
-proc sqlite3_column_type*(st: ptr RawStatement, idx: int): SqliteDateType {.importc.}
-proc sqlite3_column_blob*(st: ptr RawStatement, idx: int): pointer {.importc.}
-proc sqlite3_column_bytes*(st: ptr RawStatement, idx: int): int {.importc.}
-proc sqlite3_column_double*(st: ptr RawStatement, idx: int): float64 {.importc.}
-proc sqlite3_column_int64*(st: ptr RawStatement, idx: int): int64 {.importc.}
-proc sqlite3_column_text*(st: ptr RawStatement, idx: int): cstring {.importc.}
-proc sqlite3_column_value*(st: ptr RawStatement, idx: int): ptr RawValue {.importc.}
-{.pop.}
+proc sqlite3_auto_extension*(entry: pointer): ResultCode {.sqlite3linkage.}
+proc sqlite3_vfs_find*(name: cstring): ptr SqliteVFS {.sqlite3linkage.}
+proc sqlite3_vfs_register*(vfs: ptr SqliteVFS, default: bool): ResultCode {.sqlite3linkage.}
+proc sqlite3_malloc*(size: cint): pointer {.sqlite3linkage.}
+proc sqlite3_malloc64*(size: uint64): pointer {.sqlite3linkage.}
+proc sqlite3_realloc*(src: pointer, size: cint): pointer {.sqlite3linkage.}
+proc sqlite3_realloc64*(src: pointer, size: uint64): pointer {.sqlite3linkage.}
+proc sqlite3_free*(src: pointer) {.sqlite3linkage.}
+proc sqlite3_msize*(src: pointer): uint64 {.sqlite3linkage.}
+proc sqlite3_mprintf*(fmt: cstring): cstring {.sqlite3linkage, varargs.}
+proc sqlite3_snprintf*(size: cint, target: cstring, fmt: cstring): cstring {.sqlite3linkage, varargs.}
+proc sqlite3_errmsg*(db: ptr RawDatabase): cstring {.sqlite3linkage.}
+proc sqlite3_errstr*(code: ResultCode): cstring {.sqlite3linkage.}
+proc sqlite3_db_handle*(st: ptr RawStatement): ptr RawDatabase {.sqlite3linkage.}
+proc sqlite3_enable_shared_cache*(enabled: int): ResultCode {.sqlite3linkage.}
+proc sqlite3_open_v2*(filename: cstring, db: ptr ptr RawDatabase, flags: OpenFlags, vfs: cstring): ResultCode {.sqlite3linkage.}
+proc sqlite3_close_v2*(db: ptr RawDatabase): ResultCode {.sqlite3linkage.}
+proc sqlite3_prepare_v3*(db: ptr RawDatabase, sql: cstring, nbyte: int, flags: PrepareFlags, pstmt: ptr ptr RawStatement, tail: ptr cstring): ResultCode {.sqlite3linkage.}
+proc sqlite3_finalize*(st: ptr RawStatement): ResultCode {.sqlite3linkage.}
+proc sqlite3_reset*(st: ptr RawStatement): ResultCode {.sqlite3linkage.}
+proc sqlite3_step*(st: ptr RawStatement): ResultCode {.sqlite3linkage.}
+proc sqlite3_bind_parameter_index*(st: ptr RawStatement, name: cstring): int {.sqlite3linkage.}
+proc sqlite3_bind_blob64*(st: ptr RawStatement, idx: int, buffer: pointer, len: int, free: SqliteDestroctor): ResultCode {.sqlite3linkage.}
+proc sqlite3_bind_double*(st: ptr RawStatement, idx: int, value: float64): ResultCode {.sqlite3linkage.}
+proc sqlite3_bind_int64*(st: ptr RawStatement, idx: int, val: int64): ResultCode {.sqlite3linkage.}
+proc sqlite3_bind_null*(st: ptr RawStatement, idx: int): ResultCode {.sqlite3linkage.}
+proc sqlite3_bind_text*(st: ptr RawStatement, idx: int, val: cstring, len: int32, free: SqliteDestroctor): ResultCode {.sqlite3linkage.}
+proc sqlite3_bind_value*(st: ptr RawStatement, idx: int, val: ptr RawValue): ResultCode {.sqlite3linkage.}
+proc sqlite3_bind_pointer*(st: ptr RawStatement, idx: int, val: pointer, name: cstring, free: SqliteDestroctor): ResultCode {.sqlite3linkage.}
+proc sqlite3_bind_zeroblob64*(st: ptr RawStatement, idx: int, len: int): ResultCode {.sqlite3linkage.}
+proc sqlite3_changes*(st: ptr RawDatabase): int {.sqlite3linkage.}
+proc sqlite3_last_insert_rowid*(st: ptr RawDatabase): int {.sqlite3linkage.}
+proc sqlite3_column_type*(st: ptr RawStatement, idx: int): SqliteDateType {.sqlite3linkage.}
+proc sqlite3_column_blob*(st: ptr RawStatement, idx: int): pointer {.sqlite3linkage.}
+proc sqlite3_column_bytes*(st: ptr RawStatement, idx: int): int {.sqlite3linkage.}
+proc sqlite3_column_double*(st: ptr RawStatement, idx: int): float64 {.sqlite3linkage.}
+proc sqlite3_column_int64*(st: ptr RawStatement, idx: int): int64 {.sqlite3linkage.}
+proc sqlite3_column_text*(st: ptr RawStatement, idx: int): cstring {.sqlite3linkage.}
+proc sqlite3_column_value*(st: ptr RawStatement, idx: int): ptr RawValue {.sqlite3linkage.}
 
 proc newSQLiteError*(code: ResultCode): ref SQLiteError =
   result = newException(SQLiteError, $sqlite3_errstr code)
