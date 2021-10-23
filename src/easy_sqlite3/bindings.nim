@@ -22,7 +22,7 @@ when not defined(bundled_sqlite3):
     f
 else:
   {.compile(
-    "../../bundled/sqlite3.c",
+    "sqlite3.c",
     """
     -DSQLITE_ENABLE_FTS5=1
     -DSQLITE_ENABLE_RTREE=1
