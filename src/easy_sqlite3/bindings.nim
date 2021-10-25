@@ -21,6 +21,7 @@ when not defined(bundled_sqlite3):
     f[4].add ident "importc"
     f
 else:
+  from std/strutils import replace
   {.compile(
     "sqlite3.c",
     """
@@ -33,7 +34,7 @@ else:
     -DSQLITE_OMIT_DEPRECATED=1
     -DSQLITE_ENABLE_MATH_FUNCTIONS=1
     -DSQLITE_DQS=0
-    """
+    """.replace('\n', ' ')
   ).}
   macro sqlite3linkage(f: untyped) =
     if f[4].kind == nnkEmpty:
