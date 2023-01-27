@@ -97,7 +97,21 @@ proc genQueryIterator(sql: string, body: NimNode): NimNode =
   result = body.copy()
   let db_ident = genSym(nskParam, "db")
   let st_ident = genSym(nskVar, "st")
-  let rettype = result[3][0]
+
+  let rettype = block:
+    case result[3][0].kind
+    of nnkTupleTy:
+      result[3][0]
+    of nnkSym:
+      let typeDef = result[3][0].getImpl
+      typeDef.expectKind nnkTypeDef
+      let tuplDef = typeDef[2]
+      tuplDef.expectKind nnkTupleTy
+      tuplDef
+    else:
+      error "Expected a tuple type", result[3][0]
+      nil
+  
   injectDbDecl(result, db_ident)
   result[6] = nnkStmtList.genTree(procbody):
     injectDbFetch(procbody, sql, db_ident, st_ident)
@@ -207,8 +221,12 @@ macro importdb*(sql: static string, body: typed) =
       error("Expected int, tuple, Option[tuple]")
       return
   of nnkIteratorDef:
-    body[3][0].expectKind nnkTupleTy
-    result = genQueryIterator(sql, body)
+    let retType = body[3][0]
+    case retType.kind
+    of nnkTupleTy, nnkSym:
+      result = genQueryIterator(sql, body)
+    else:
+      error("Expected a tuple type", retType)
   else:
     error("Expected proc or iterator, got " & $body.kind, body)
     return
