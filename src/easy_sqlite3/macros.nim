@@ -89,7 +89,7 @@ proc fillPar(ret, st_ident: NimNode): NimNode =
             bindSym "getColumn"
           ),
           newLit idx,
-          it[1]
+          nnkBracketExpr.newTree(newIdentNode("typedesc"),it[1])
         )
       )
 
@@ -114,7 +114,7 @@ proc genQueryProcedure(sql: string, body, tupdef: NimNode, opt: static bool): Ni
   let rettype = when opt:
     result[3][0][1]
   else:
-    result[3][0]
+    tupdef
   injectDbDecl(result, db_ident)
   result[6] = nnkStmtList.genTree(procbody):
     injectDbFetch(procbody, sql, db_ident, st_ident)
@@ -180,16 +180,23 @@ proc genCreateProcedure(sql: string, body: NimNode): NimNode =
           nnkCall.newTree(bindSym "newException", ident "SQLiteError", newLit "Invalid statement")
         )
 
-macro importdb*(sql: static string, body: untyped) =
+macro importdb*(sql: static string, body: typed) =
   case body.kind:
   of nnkProcDef:
     let ret = body[3][0]
     case ret.kind:
     of nnkEmpty:
       result = genCreateProcedure(sql, body)
-    of nnkIdent:
-      ret.expectIdent "int"
-      result = genUpdateProcedure(sql, body)
+    of nnkSym:
+      case ret.strVal:
+      of "int":
+        result = genUpdateProcedure(sql, body)
+      else:
+        let typImpl = ret.getImpl
+        typImpl.expectKind nnkTypeDef
+        let tuplImpl = typImpl[2]
+        tuplImpl.expectKind nnkTupleTy
+        result = genQueryProcedure(sql, body, tuplImpl, false)
     of nnkBracketExpr:
       ret[0].expectIdent "Option"
       ret[1].expectKind nnkTupleTy
@@ -205,6 +212,14 @@ macro importdb*(sql: static string, body: untyped) =
   else:
     error("Expected proc or iterator, got " & $body.kind, body)
     return
+  
+  if result[0].isExported:
+    result[0] = nnkPostfix.newTree(
+      "*".ident,
+      result[0].strVal.ident
+    )
+  else:
+    result[0] = result[0].strVal.ident
 
 proc db_begin_deferred() {.importdb: "BEGIN DEFERRED".}
 proc db_begin_immediate() {.importdb: "BEGIN IMMEDIATE".}
