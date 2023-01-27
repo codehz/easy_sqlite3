@@ -18,6 +18,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
-      - uses: jiro4989/setup-nim-action@v1
+      - uses: jiro4989/setup-nim-action@v1.4.2
       - run: nimble test -Y
       - run: nimble test -Y -d:release
