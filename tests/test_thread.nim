@@ -1,4 +1,4 @@
-import std/[tables, random, os, times, strformat]
+import std/[unittest, tables, random, os, times, strformat]
 
 import easy_sqlite3
 import easy_sqlite3/memfs
@@ -37,53 +37,56 @@ proc connectDatabase(): Database =
   else:
     initDatabase("file:memdb1?mode=memory&cache=shared", {so_readwrite, so_create, so_uri})
   
+test "threads":
+  if defined(macosx):
+    skip()
+  else:
+    var gdb = connectDatabase()
+    gdb.create_table()
+    gdb.exec "VACUUM"
 
-var gdb = connectDatabase()
-gdb.create_table()
-gdb.exec "VACUUM"
+    const COUNT = 1000000
+    const GROUP = 100
 
-const COUNT = 1000000
-const GROUP = 100
-
-proc worker_fn() {.thread.} =
-  echo "thread start"
-  var tdb = connectDatabase()
-  var r = initRand(42)
-  for _ in 0..<(COUNT div GROUP):
-    retry:
-      tdb.transactionImmediate:
-        for _ in 0..<GROUP:
-          let val = r.rand(1048576)
-          # increase the chance of collision
-          if val < 1024:
-            sleep(1)
-          tdb.insert_data(val)
+    proc worker_fn() {.thread.} =
+      echo "thread start"
+      var tdb = connectDatabase()
+      var r = initRand(42)
+      for _ in 0..<(COUNT div GROUP):
         retry:
-          commit()
+          tdb.transactionImmediate:
+            for _ in 0..<GROUP:
+              let val = r.rand(1048576)
+              # increase the chance of collision
+              if val < 1024:
+                sleep(1)
+              tdb.insert_data(val)
+            retry:
+              commit()
 
-var worker: Thread[void]
-createThread(worker, worker_fn)
+    var worker: Thread[void]
+    createThread(worker, worker_fn)
 
-let init = cpuTime()
-var prev = init
-while true:
-  var c: int
-  retry:
-    c = gdb.count_items().count
-  let curr = cpuTime()
-  let diff = curr - prev - 0.2
-  if diff > 0:
+    let init = cpuTime()
+    var prev = init
+    while true:
+      var c: int
+      retry:
+        c = gdb.count_items().count
+      let curr = cpuTime()
+      let diff = curr - prev - 0.2
+      if diff > 0:
+        when useMemFs:
+          echo fmt"{curr - init:>6.1f}s: {c:>7}"
+        else:
+          echo fmt"{curr - init:>6.1f}s: {c:>7} failures: {failedCount}"
+        prev = curr - diff
+      if c == COUNT:
+        break
+
     when useMemFs:
-      echo fmt"{curr - init:>6.1f}s: {c:>7}"
+      echo fmt"time: {cpuTime() - init:>9.4f}s"
     else:
-      echo fmt"{curr - init:>6.1f}s: {c:>7} failures: {failedCount}"
-    prev = curr - diff
-  if c == COUNT:
-    break
+      echo fmt"time: {cpuTime() - init:>9.4f}s failures: {failedCount}"
 
-when useMemFs:
-  echo fmt"time: {cpuTime() - init:>9.4f}s"
-else:
-  echo fmt"time: {cpuTime() - init:>9.4f}s failures: {failedCount}"
-
-worker.joinThread()
+    worker.joinThread()
