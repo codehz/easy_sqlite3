@@ -63,12 +63,12 @@ proc injectDbArguments(procbody: var NimNode, body, st_ident: NimNode): seq[tupl
         )
       )
     )
-  procbody.add nnkCall.newTree(
-    nnkDotExpr.newTree(
-      st_ident,
-      bindSym "reset"
-    )
-  )
+  # procbody.add nnkCall.newTree(
+  #   nnkDotExpr.newTree(
+  #     st_ident,
+  #     bindSym "reset"
+  #   )
+  # )
   for it in result:
     procbody.add nnkAsgn.newTree(
       nnkBracketExpr.newTree(
@@ -116,10 +116,18 @@ proc genQueryIterator(sql: string, body: NimNode): NimNode =
   result[6] = nnkStmtList.genTree(procbody):
     injectDbFetch(procbody, sql, db_ident, st_ident)
     discard injectDbArguments(procbody, body, st_ident)
-    procbody.addTree(nnkWhileStmt, whilebody):
-      whilebody.add nnkCall.newTree(nnkDotExpr.newTree(st_ident, bindSym "step"))
-      whilebody.addTree(nnkYieldStmt, yieldbody):
-        yieldbody.add fillPar(rettype, st_ident)
+    procbody.addTree(nnkTryStmt, trybody):
+      trybody.addTree(nnkWhileStmt, whilebody):
+        whilebody.add nnkCall.newTree(nnkDotExpr.newTree(st_ident, bindSym "step"))
+        whilebody.addTree(nnkYieldStmt, yieldbody):
+          yieldbody.add fillPar(rettype, st_ident)
+      trybody.addTree(nnkFinally, finallybody):
+        finallybody.add nnkCall.newTree(
+          nnkDotExpr.newTree(
+            st_ident,
+            bindSym "reset"
+          )
+        )
 
 proc genQueryProcedure(sql: string, body, tupdef: NimNode, opt: static bool): NimNode =
   result = body.copy()
@@ -133,32 +141,40 @@ proc genQueryProcedure(sql: string, body, tupdef: NimNode, opt: static bool): Ni
   result[6] = nnkStmtList.genTree(procbody):
     injectDbFetch(procbody, sql, db_ident, st_ident)
     discard injectDbArguments(procbody, body, st_ident)
-    procbody.addTree(nnkIfStmt, ifbody):
-      ifbody.addTree(nnkElifBranch, branch):
-        branch.add nnkCall.newTree(nnkDotExpr.newTree(st_ident, bindSym "step"))
-        branch.addTree(nnkStmtList, resultstmt):
-          resultstmt.addTree(nnkAsgn, retbody):
-            retbody.add ident "result"
-            let tmp = fillPar(rettype, st_ident)
-            when opt:
-              retbody.add nnkCommand.newTree(bindSym "some", tmp)
-            else:
-              retbody.add tmp
-          resultstmt.addTree(nnkIfStmt, ifbody2):
-            ifbody2.addTree(nnkElifBranch, dup_branch):
-              dup_branch.add nnkCall.newTree(nnkDotExpr.newTree(st_ident, bindSym "step"))
-              dup_branch.add nnkRaiseStmt.newTree(
-                nnkCall.newTree(bindSym "newException", ident "SQLiteError", newLit "Too many results")
-              )
-      ifbody.addTree(nnkElse, elsebody):
-        when opt:
-          elsebody.add nnkReturnStmt.newTree(
-            nnkCommand.newTree(bindSym "none", rettype)
+    procbody.addTree(nnkTryStmt, trybody):
+      trybody.addTree(nnkIfStmt, ifbody):
+        ifbody.addTree(nnkElifBranch, branch):
+          branch.add nnkCall.newTree(nnkDotExpr.newTree(st_ident, bindSym "step"))
+          branch.addTree(nnkStmtList, resultstmt):
+            resultstmt.addTree(nnkAsgn, retbody):
+              retbody.add ident "result"
+              let tmp = fillPar(rettype, st_ident)
+              when opt:
+                retbody.add nnkCommand.newTree(bindSym "some", tmp)
+              else:
+                retbody.add tmp
+            resultstmt.addTree(nnkIfStmt, ifbody2):
+              ifbody2.addTree(nnkElifBranch, dup_branch):
+                dup_branch.add nnkCall.newTree(nnkDotExpr.newTree(st_ident, bindSym "step"))
+                dup_branch.add nnkRaiseStmt.newTree(
+                  nnkCall.newTree(bindSym "newException", ident "SQLiteError", newLit "Too many results")
+                )
+        ifbody.addTree(nnkElse, elsebody):
+          when opt:
+            elsebody.add nnkReturnStmt.newTree(
+              nnkCommand.newTree(bindSym "none", rettype)
+            )
+          else:
+            elsebody.add nnkRaiseStmt.newTree(
+              nnkCall.newTree(bindSym "newException", ident "SQLiteError", newLit "No results")
+            )
+      trybody.addTree(nnkFinally, finallybody):
+        finallybody.add nnkCall.newTree(
+          nnkDotExpr.newTree(
+            st_ident,
+            bindSym "reset"
           )
-        else:
-          elsebody.add nnkRaiseStmt.newTree(
-            nnkCall.newTree(bindSym "newException", ident "SQLiteError", newLit "No results")
-          )
+        )
 
 proc genUpdateProcedure(sql: string, body: NimNode): NimNode =
   result = body.copy()
@@ -168,15 +184,23 @@ proc genUpdateProcedure(sql: string, body: NimNode): NimNode =
   result[6] = nnkStmtList.genTree(procbody):
     injectDbFetch(procbody, sql, db_ident, st_ident)
     discard injectDbArguments(procbody, body, st_ident)
-    procbody.addTree(nnkIfStmt, ifbody):
-      ifbody.addTree(nnkElifBranch, branch):
-        branch.add nnkCall.newTree(nnkDotExpr.newTree(st_ident, bindSym "step"))
-        branch.add nnkRaiseStmt.newTree(
-          nnkCall.newTree(bindSym "newException", ident "SQLiteError", newLit "Invalid update")
-        )
-      ifbody.addTree(nnkElse, elsebody):
-        elsebody.add nnkReturnStmt.newTree(
-          nnkCall.newTree(nnkDotExpr.newTree(db_ident, bindSym "lastInsertRowid"))
+    procbody.addTree(nnkTryStmt, trybody):
+      trybody.addTree(nnkIfStmt, ifbody):
+        ifbody.addTree(nnkElifBranch, branch):
+          branch.add nnkCall.newTree(nnkDotExpr.newTree(st_ident, bindSym "step"))
+          branch.add nnkRaiseStmt.newTree(
+            nnkCall.newTree(bindSym "newException", ident "SQLiteError", newLit "Invalid update")
+          )
+        ifbody.addTree(nnkElse, elsebody):
+          elsebody.add nnkReturnStmt.newTree(
+            nnkCall.newTree(nnkDotExpr.newTree(db_ident, bindSym "lastInsertRowid"))
+          )
+      trybody.addTree(nnkFinally, finallybody):
+        finallybody.add nnkCall.newTree(
+          nnkDotExpr.newTree(
+            st_ident,
+            bindSym "reset"
+          )
         )
 
 proc genCreateProcedure(sql: string, body: NimNode): NimNode =
@@ -187,11 +211,19 @@ proc genCreateProcedure(sql: string, body: NimNode): NimNode =
   result[6] = nnkStmtList.genTree(procbody):
     injectDbFetch(procbody, sql, db_ident, st_ident)
     discard injectDbArguments(procbody, body, st_ident)
-    procbody.addTree(nnkIfStmt, ifbody):
-      ifbody.addTree(nnkElifBranch, branch):
-        branch.add nnkCall.newTree(nnkDotExpr.newTree(st_ident, bindSym "step"))
-        branch.add nnkRaiseStmt.newTree(
-          nnkCall.newTree(bindSym "newException", ident "SQLiteError", newLit "Invalid statement")
+    procbody.addTree(nnkTryStmt, trybody):
+      trybody.addTree(nnkIfStmt, ifbody):
+        ifbody.addTree(nnkElifBranch, branch):
+          branch.add nnkCall.newTree(nnkDotExpr.newTree(st_ident, bindSym "step"))
+          branch.add nnkRaiseStmt.newTree(
+            nnkCall.newTree(bindSym "newException", ident "SQLiteError", newLit "Invalid statement")
+          )
+      trybody.addTree(nnkFinally, finallybody):
+        finallybody.add nnkCall.newTree(
+          nnkDotExpr.newTree(
+            st_ident,
+            bindSym "reset"
+          )
         )
 
 macro importdb*(sql: static string, body: typed) =
