@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.1.6"
+version       = "0.1.8"
 author        = "CodeHz"
 description   = "Yet another SQLite wrapper for Nim"
 license       = "MIT"
