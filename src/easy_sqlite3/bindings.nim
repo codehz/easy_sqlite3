@@ -528,7 +528,7 @@ proc getColumn*(st: ref Statement, idx: int, T: typedesc[string]): string =
   let p = sqlite3_column_text(st.raw, idx)
   let l = sqlite3_column_bytes(st.raw, idx)
   result = newString l
-  copyMem(addr result[0], p, l)
+  if l > 0: copyMem(addr result[0], p, l)
 
 proc getColumn*[T](st: ref Statement, idx: int, _: typedesc[Option[T]]): Option[T] =
   if st.getColumnType(idx) == dt_null:
