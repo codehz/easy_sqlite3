@@ -516,7 +516,7 @@ proc getColumn*(st: ref Statement, idx: int, T: typedesc[seq[byte]]): seq[byte] 
   let p = cast[ptr UncheckedArray[byte]](sqlite3_column_blob(st.raw, idx))
   let l = sqlite3_column_bytes(st.raw, idx)
   result = newSeq[byte]l
-  copyMem(addr result[0], p, l)
+  if l > 0: copyMem(addr result[0], p, l)
 
 proc getColumn*(st: ref Statement, idx: int, T: typedesc[SomeFloat]): SomeFloat =
   cast[T](sqlite3_column_double(st.raw, idx))
