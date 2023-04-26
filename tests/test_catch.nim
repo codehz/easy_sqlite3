@@ -17,7 +17,7 @@ suite "catch":
     try:
       discard db.insertData(1, 2)
       fail()
-    except:
+    except CatchableError:
       check getCurrentExceptionMsg() == "UNIQUE constraint failed: data.id"
   test "get data":
     check db.getData(1) == (value: 1)

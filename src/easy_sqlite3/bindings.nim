@@ -559,6 +559,6 @@ proc execM*(db: var Database, sqls: varargs[string]) {.discardable.} =
     for sql in sqls:
       discard db.exec(sql, cache = false)
     discard db.exec "COMMIT"
-  except:
+  except CatchableError:
     discard db.exec "ROLLBACK"
     raise getCurrentException()

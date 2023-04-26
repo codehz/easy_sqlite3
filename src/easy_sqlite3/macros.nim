@@ -290,7 +290,7 @@ template gen_transaction(db: var Database, begin_stmt, body: untyped): untyped =
       try:
         body
         commit()
-      except:
+      except CatchableError:
         db_rollback db
         raise getCurrentException()
 

@@ -16,7 +16,7 @@ else:
       try:
         body
         break
-      except:
+      except CatchableError:
         failed.inc
     if failed > 0:
       failedCount.atomicInc(failed)
