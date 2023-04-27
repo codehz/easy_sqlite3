@@ -491,6 +491,12 @@ proc `[]=`*(st: ref Statement, idx: int, val: type(nil)) =
 proc `[]=`*(st: ref Statement, idx: int, val: string) =
   st.raw.sqliteCheck sqlite3_bind_text(st.raw, idx, val, int32 val.len, TransientDestructor)
 
+proc `[]=`*[T](st: ref Statement, idx: int, val: Option[T]) =
+  if val.is_none:
+    st.raw.sqliteCheck sqlite3_bind_null(st.raw, idx)
+  else:
+    st[idx] = val.get
+
 proc reset*(st: ref Statement) =
   st.raw.sqliteCheck sqlite3_reset(st.raw)
 
@@ -534,7 +540,7 @@ proc getColumn*[T](st: ref Statement, idx: int, _: typedesc[Option[T]]): Option[
   if st.getColumnType(idx) == dt_null:
     none(T)
   else:
-    st.getColumn(idx, T)
+    some(st.getColumn(idx, T))
 
 proc unpack*[T: tuple](st: ref Statement, _: typedesc[T]): T =
   var idx = 0
