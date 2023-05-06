@@ -224,7 +224,7 @@ type SqliteDestroctor* = proc (p: pointer) {.cdecl.}
 const StaticDestructor* = cast[SqliteDestroctor](0)
 const TransientDestructor* = cast[SqliteDestroctor](-1)
 
-type SqliteDateType* = enum
+type SqliteDataType* = enum
   dt_integer = 1,
   dt_float   = 2,
   dt_text    = 3,
@@ -385,7 +385,9 @@ proc sqlite3_bind_pointer*(st: ptr RawStatement, idx: int, val: pointer, name: c
 proc sqlite3_bind_zeroblob64*(st: ptr RawStatement, idx: int, len: int): ResultCode {.sqlite3linkage.}
 proc sqlite3_changes*(st: ptr RawDatabase): int {.sqlite3linkage.}
 proc sqlite3_last_insert_rowid*(st: ptr RawDatabase): int {.sqlite3linkage.}
-proc sqlite3_column_type*(st: ptr RawStatement, idx: int): SqliteDateType {.sqlite3linkage.}
+proc sqlite3_column_count*(st: ptr RawStatement): int {.sqlite3linkage.}
+proc sqlite3_column_type*(st: ptr RawStatement, idx: int): SqliteDataType {.sqlite3linkage.}
+proc sqlite3_column_name*(st: ptr RawStatement, idx: int): cstring {.sqlite3linkage.}
 proc sqlite3_column_blob*(st: ptr RawStatement, idx: int): pointer {.sqlite3linkage.}
 proc sqlite3_column_bytes*(st: ptr RawStatement, idx: int): int {.sqlite3linkage.}
 proc sqlite3_column_double*(st: ptr RawStatement, idx: int): float64 {.sqlite3linkage.}
@@ -497,6 +499,9 @@ proc `[]=`*[T](st: ref Statement, idx: int, val: Option[T]) =
   else:
     st[idx] = val.get
 
+proc `[]=`*[T](st: ref Statement, name: string, value: T) =
+  st[st.getParameterIndex(name)] = value
+
 proc reset*(st: ref Statement) =
   st.raw.sqliteCheck sqlite3_reset(st.raw)
 
@@ -515,7 +520,7 @@ proc withColumnBlob*(st: ref Statement, idx: int, recv: proc(vm: openarray[byte]
   let l = sqlite3_column_bytes(st.raw, idx)
   recv(cast[ptr UncheckedArray[byte]](p).toOpenArray(0, l))
 
-proc getColumnType*(st: ref Statement, idx: int): SqliteDateType =
+proc getColumnType*(st: ref Statement, idx: int): SqliteDataType =
   sqlite3_column_type(st.raw, idx)
 
 proc getColumn*(st: ref Statement, idx: int, T: typedesc[seq[byte]]): seq[byte] =
@@ -541,6 +546,31 @@ proc getColumn*[T](st: ref Statement, idx: int, _: typedesc[Option[T]]): Option[
     none(T)
   else:
     some(st.getColumn(idx, T))
+
+type ColumnDef* = object
+  st*:        ref Statement
+  idx*:       int
+  data_type*: SqliteDataType
+  name*:      string
+
+proc columns*(st: ref Statement): seq[ref ColumnDef] =
+  result = @[]
+  var idx = 0
+  let count = sqlite3_column_count(st.raw)
+  while idx < count:
+    let col = new(ColumnDef)
+    col.st = st
+    col.idx = idx
+    col.data_type = sqlite3_column_type(st.raw, idx)
+    col.name = $sqlite3_column_name(st.raw, idx)
+    result.add(col)
+    idx += 1
+
+proc `[]`*(st: ref Statement, idx: int): ref ColumnDef =
+  result = st.columns[idx]
+
+proc `[]`*[T](col: ref ColumnDef, t: typedesc[T]): T =
+  result = col.st.getColumn(col.idx, t)
 
 proc unpack*[T: tuple](st: ref Statement, _: typedesc[T]): T =
   var idx = 0
@@ -568,3 +598,10 @@ proc execM*(db: var Database, sqls: varargs[string]) {.discardable.} =
   except CatchableError:
     discard db.exec "ROLLBACK"
     raise getCurrentException()
+
+iterator rows*(st: ref Statement): seq[ref ColumnDef] =
+  try:
+    while st.step():
+      yield st.columns()
+  finally:
+    st.reset()
