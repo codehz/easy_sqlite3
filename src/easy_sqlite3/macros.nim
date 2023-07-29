@@ -86,7 +86,7 @@ proc fillPar(ret, st_ident: NimNode): NimNode =
         nnkCall.newTree(
           nnkDotExpr.newTree(
             st_ident,
-            bindSym "getColumn"
+            ident "getColumn"
           ),
           newLit idx,
           nnkBracketExpr.newTree(newIdentNode("typedesc"),it[1])
