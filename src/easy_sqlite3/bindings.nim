@@ -45,6 +45,7 @@ else:
 type RawDatabase* = object
 type RawStatement* = object
 type RawValue* = object
+type RawContext* = object
 
 type CachedHash[T] = object
   cache: int
@@ -149,13 +150,24 @@ type
     action_code: AuthorizerActionCode,
     arg3, arg4, arg5, arg6: Option[string]): AuthorizerResult
   Authorizer* = proc(request: AuthorizerRequest): AuthorizerResult
-  WrapAuthorizer = object
-    authorizer: RawAuthorizer
+
+  RawUserFunction* = proc(context: ptr RawContext, argc: cint, argv: UncheckedArray[ptr RawValue])
+  RawUserFunctionFinal* = proc(context: ptr RawContext)
+  RawUserFunctionDestroy* = proc(app: pointer)
+
+  Context[T] = ref object
+    raw*: RawContext
+    raw_argc*: int
+    raw_argv*: UncheckedArray[ptr RawValue]
+  UserFunction*[T] = proc(ctx: Context[T]) {.closure.}
+
+  WrapCallback[T] = object
+    callback: T
 
 type Database* = object
   raw*: ptr RawDatabase
   stmtcache: Table[CachedHash[string], ref Statement]
-  authorizer: ref WrapAuthorizer
+  authorizer: ref WrapCallback[RawAuthorizer]
 
 type ResultCode* {.pure.} = enum
   sr_ok                      = 0,
@@ -311,6 +323,16 @@ type DatabaseEncoding* = enum
   enc_utf16,
   enc_utf16be,
   enc_utf16le,
+
+type FunctionFlag* = enum
+  func_utf8          = 1,
+  func_utf16le       = 2,
+  func_utf16be       = 3,
+  func_utf16         = 4,
+  func_deterministic = 0x000000800,
+  func_directonly    = 0x000080000,
+  func_subtype       = 0x000100000,
+  func_innocuous     = 0x000200000,
 
 type SqliteDestroctor* = proc (p: pointer) {.cdecl.}
 
@@ -488,6 +510,55 @@ proc sqlite3_column_double*(st: ptr RawStatement, idx: int): float64 {.sqlite3li
 proc sqlite3_column_int64*(st: ptr RawStatement, idx: int): int64 {.sqlite3linkage.}
 proc sqlite3_column_text*(st: ptr RawStatement, idx: int): cstring {.sqlite3linkage.}
 proc sqlite3_column_value*(st: ptr RawStatement, idx: int): ptr RawValue {.sqlite3linkage.}
+proc sqlite3_create_function_v2*(db: ptr RawDatabase, function_name: cstring, narg: cint, textrep: cint, app: pointer,
+                                 function, step: RawUserFunction,
+                                 final: RawUserFunctionFinal,
+                                 destroy: RawUserFunctionDestroy): ResultCode {.sqlite3linkage.}
+proc sqlite3_create_window_function*(db: ptr RawDatabase, function_name: cstring, narg: cint, textrep: cint, app: pointer,
+                                     step: RawUserFunction,
+                                     final, value: RawUserFunctionFinal,
+                                     inverse: RawUserFunction,
+                                     destroy: RawUserFunctionDestroy): ResultCode {.sqlite3linkage.}
+proc sqlite3_aggregate_context*(context: ptr RawContext, nBytes: cint): pointer {.sqlite3linkage.}
+proc sqlite3_context_db_handle*(context: ptr RawContext): RawDatabase {.sqlite3linkage.}
+proc sqlite3_get_auxdata*(context: ptr RawContext, n: cint): pointer {.sqlite3linkage.}
+proc sqlite3_set_auxdata*(context: ptr RawContext, n: cint, p: pointer, destructor: SqliteDestroctor) {.sqlite3linkage.}
+proc sqlite3_user_data*(context: ptr RawContext): pointer {.sqlite3linkage.}
+proc sqlite3_result_blob*(context: ptr RawContext, p: pointer, n: cint, destructor: SqliteDestroctor) {.sqlite3linkage.}
+proc sqlite3_result_blob64*(context: ptr RawContext, p: pointer, n: uint64, destructor: SqliteDestroctor) {.sqlite3linkage.}
+proc sqlite3_result_double*(context: ptr RawContext, n: cdouble) {.sqlite3linkage.}
+proc sqlite3_result_error*(context: ptr RawContext, s: cstring, n: cint) {.sqlite3linkage.}
+proc sqlite3_result_error16*(context: ptr RawContext, p: pointer, n: cint) {.sqlite3linkage.}
+proc sqlite3_result_error_toobig*(context: ptr RawContext) {.sqlite3linkage.}
+proc sqlite3_result_error_nomem*(context: ptr RawContext) {.sqlite3linkage.}
+proc sqlite3_result_error_code*(context: ptr RawContext, n: cint) {.sqlite3linkage.}
+proc sqlite3_result_int*(context: ptr RawContext, n: cint) {.sqlite3linkage.}
+proc sqlite3_result_int64*(context: ptr RawContext, n: int64) {.sqlite3linkage.}
+proc sqlite3_result_null*(context: ptr RawContext) {.sqlite3linkage.}
+proc sqlite3_result_text*(context: ptr RawContext, s: cstring, n: cint, destructor: SqliteDestroctor) {.sqlite3linkage.}
+proc sqlite3_result_text64*(context: ptr RawContext, s: cstring, n: uint64, destructor: SqliteDestroctor, encoding: cuchar) {.sqlite3linkage.}
+proc sqlite3_result_text16*(context: ptr RawContext, p: pointer, n: cint, destructor: SqliteDestroctor) {.sqlite3linkage.}
+proc sqlite3_result_text16le*(context: ptr RawContext, p: pointer, n: cint, destructor: SqliteDestroctor) {.sqlite3linkage.}
+proc sqlite3_result_text16be*(context: ptr RawContext, p: pointer, n: cint, destructor: SqliteDestroctor) {.sqlite3linkage.}
+proc sqlite3_result_value*(context: ptr RawContext, val: ptr RawValue) {.sqlite3linkage.}
+proc sqlite3_result_pointer*(context: ptr RawContext, p: pointer, s: cstring, destructor: SqliteDestroctor) {.sqlite3linkage.}
+proc sqlite3_result_zeroblob*(context: ptr RawContext, n: cint) {.sqlite3linkage.}
+proc sqlite3_result_zeroblob64*(context: ptr RawContext, n: uint64): cint {.sqlite3linkage.}
+proc sqlite3_value_blob*(val: ptr RawValue): pointer {.sqlite3linkage.}
+proc sqlite3_value_double*(val: ptr RawValue): cdouble {.sqlite3linkage.}
+proc sqlite3_value_int*(val: ptr RawValue): cint {.sqlite3linkage.}
+proc sqlite3_value_int64*(val: ptr RawValue): int64 {.sqlite3linkage.}
+proc sqlite3_value_pointer*(val: ptr RawValue, s: cstring): pointer {.sqlite3linkage.}
+proc sqlite3_value_text*(val: ptr RawValue): cstring {.sqlite3linkage.}
+proc sqlite3_value_text16*(val: ptr RawValue): pointer {.sqlite3linkage.}
+proc sqlite3_value_text16le*(val: ptr RawValue): pointer {.sqlite3linkage.}
+proc sqlite3_value_text16be*(val: ptr RawValue): pointer {.sqlite3linkage.}
+proc sqlite3_value_bytes*(val: ptr RawValue): cint {.sqlite3linkage.}
+proc sqlite3_value_bytes16*(val: ptr RawValue): cint {.sqlite3linkage.}
+proc sqlite3_value_type*(val: ptr RawValue): SqliteDataType {.sqlite3linkage.}
+proc sqlite3_value_numeric_type*(val: ptr RawValue): cint {.sqlite3linkage.}
+proc sqlite3_value_nochange*(val: ptr RawValue): cint {.sqlite3linkage.}
+proc sqlite3_value_frombind*(val: ptr RawValue): cint {.sqlite3linkage.}
 
 proc newSQLiteError*(code: ResultCode): ref SQLiteError =
   result = newException(SQLiteError, $sqlite3_errstr code)
@@ -545,14 +616,14 @@ proc toS(s: cstring): Option[string] =
     result = some($s)
 
 proc setAuthorizer*(db: var Database, callback: RawAuthorizer = nil) =
-  let userdata: ref WrapAuthorizer = new(WrapAuthorizer)
-  userdata.authorizer = callback
+  let userdata: ref WrapCallback[RawAuthorizer] = new(WrapCallback[RawAuthorizer])
+  userdata.callback = callback
 
   proc raw_callback(
     userdata: pointer,
     action_code: AuthorizerActionCode,
     arg3, arg4, arg5, arg6: cstring): AuthorizerResult {.cdecl.} =
-    let callback = cast[ref WrapAuthorizer](userdata).authorizer
+    let callback = cast[ref WrapCallback[RawAuthorizer]](userdata).callback
     callback(action_code, arg3.toS(), arg4.toS(), arg5.toS(), arg6.toS())
 
   var res: ResultCode
@@ -639,8 +710,107 @@ proc setAuthorizer*(db: var Database, callback: Authorizer = nil) =
       return callback(req)
   db.setAuthorizer(raw_callback)
 
-proc changes*(st: var Database): int =
-  sqlite3_changes st.raw
+proc createFunction*[T](db: var Database, function_name: string, narg: int, f: UserFunction[T], flags: FunctionFlag = FunctionFlag(0), encoding: FunctionFlag = func_utf_8, auxdata: typedesc[T] = ref RootObj) =
+  let wrapper = new(WrapCallback[UserFunction[T]])
+  wrapper.callback = f
+
+  proc trampoline(context: ptr RawContext, argc: cint, argv: UncheckedArray[ptr RawValue]) =
+    let wrapper = cast[ref WrapCallback[RawAuthorizer]](context.sqlite3_user_data())
+    let ctx = new(Context[T])
+    ctx.raw = context
+    ctx.raw_argc = argc
+    ctx.raw_argv = argv
+    try:
+      wrapper.callback(ctx)
+    except OutOfMemDefect:
+      context.sqlite3_result_error_nomem()
+
+  proc destructor(context: ptr RawContext) =
+    let wrapper = cast[ref WrapCallback[RawAuthorizer]](context.sqlite3_user_data())
+    GC_unref(wrapper)
+
+  GC_ref(wrapper)
+  sqliteCheck db.raw.sqlite3_create_function_v2(cstring(function_name), nargs, flags | encoding, cast[pointer](wrapper) trampoline, nil, nil, nil, destructor)
+
+{.push inline.}
+
+proc `[]=`*[T](ctx: Context[T], idx: int, value: T) =
+  proc destructor(p: pointer) =
+    GC_unref(cast[T](p))
+
+  GC_ref(value)
+  ctx.raw.sqlite3_set_auxdata(idx, cast[pointer](value), destructor)
+
+proc `[]`*[T](ctx: Context[T], idx: int): T =
+  result = cast[T](ctx.raw.sqlite3_get_auxdata(idx))
+
+proc argc*[T](ctx: Context[T]): int = ctx.raw_argc
+
+proc raw_arg*[T](ctx: Context[T], idx: int): ptr RawValue =
+  if idx < 0 or idx >= ctx.raw_argc: return nil
+  result = ctx.raw_argv[idx]
+
+proc arg_type*[T](ctx: Context[T], idx: int): SqliteDataType =
+  result = ctx.raw_arg(idx).sqlite3_value_type()
+
+proc arg_numeric_type*[T](ctx: Context[T], idx: int): SqliteDataType =
+  result = ctx.raw_arg(idx).sqlite3_value_numeric_type()
+
+proc arg_is_null*[T](ctx: Context[T], idx: int): SqliteDataType =
+  result = ctx.raw_arg(idx).sqlite3_value_type() == dt_null
+
+proc `[]`*(val: ptr RawValue, T: typedesc[SomeFloat]): SomeFloat =
+  result = cast[T](val.sqlite3_value_double())
+
+proc `[]`*(val: ptr RawValue, T: typedesc[SomeOrdinal]): SomeOrdinal =
+  result = cast[T](val.sqlite3_value_int64())
+
+proc `[]`*(val: ptr RawValue, t: typedesc[string]): string =
+  let p = val.sqlite3_value_text()
+  let l = val.sqlite3_value_bytes()
+  result = newString l
+  if l > 0: copyMem(addr result[0], p, l)
+
+proc `[]`*(val: ptr RawValue, t: typedesc[seq[byte]]): seq[byte] =
+  let p = cast[ptr UncheckedArray[byte]](val.sqlite3_value_blob())
+  let l = val.sqlite3_value_bytes()
+  result = newSeq[byte]l
+  if l > 0: copyMem(addr result[0], p, l)
+
+proc `[]`*[T](val: ptr RawValue, t: typedesc[Option[T]]): Option[T] =
+  if val.sqlite3_value_type():
+    result = none(T)
+  else:
+    result = some(val[T])
+
+proc `[]`*[T,T2](ctx: Context[T], idx: int, t: typedesc[T2]): T2 =
+  result = ctx.raw_arg(idx)[type(result)]
+
+proc `result=`*[T](ctx: Context[T], value: SomeFloat) =
+  ctx.raw.sqlite3_result_double(cdouble(value))
+
+proc `result=`*[T](ctx: Context[T], value: SomeOrdinal) =
+  ctx.raw.sqlite3_result_int64(int64(value))
+
+proc `result=`*[T](ctx: Context[T], value: type(nil)) =
+  ctx.raw.sqlite3_result_null()
+
+proc `result=`*[T](ctx: Context[T], value: string) =
+  ctx.raw.sqlite3_result_text(cstring(value), len(value), TransientDestructor)
+
+proc `result=`*[T](ctx: Context[T], value: openarray[byte]) =
+  ctx.raw.sqlite3_result_blob64(value.unsafeAddr, len(value), TransientDestructor)
+
+proc `result=`*[T](ctx: Context[T], code: ResultCode) =
+  ctx.raw.sqlite3_result_error(code)
+
+proc `result=`*[T](ctx: Context[T], value: Option[T]) =
+  if value.is_none:
+    ctx.raw.sqlite3_result_null()
+  else:
+    ctx.result = value.get
+
+{.pop inline.}
 
 proc changes*(st: ref Statement): int =
   sqlite3_changes sqlite3_db_handle st.raw
