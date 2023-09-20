@@ -102,6 +102,8 @@ type
     savepoint           = 32, # Operation       Savepoint Name
     recursive           = 33, # NULL            NULL
   AuthorizerRequest* = ref object
+    db_name*: string
+    caller*: string
     case action_code*: AuthorizerActionCode
     of create_index, create_temp_index, drop_index, drop_temp_index:
       index_name*: string
@@ -573,69 +575,71 @@ proc setAuthorizer*(db: var Database, callback: Authorizer = nil) =
       of create_index, create_temp_index, drop_index, drop_temp_index:
         req = AuthorizerRequest(
           action_code: code,
-          index_name: arg3.get,
-          index_table_name: arg4.get)
+          index_name: arg3.get(""),
+          index_table_name: arg4.get(""))
       of create_table, create_temp_table, delete, drop_table, drop_temp_table, insert, analyze:
         req = AuthorizerRequest(
           action_code: code,
-          table_name: arg3.get)
+          table_name: arg3.get(""))
       of create_temp_trigger, create_trigger, drop_temp_trigger, drop_trigger:
         req = AuthorizerRequest(
           action_code: code,
-          trigger_name: arg3.get,
-          trigger_table_name: arg4.get)
+          trigger_name: arg3.get(""),
+          trigger_table_name: arg4.get(""))
       of create_temp_view, create_view, drop_temp_view, drop_view:
         req = AuthorizerRequest(
           action_code: code,
-          view_name: arg3.get)
+          view_name: arg3.get(""))
       of pragma:
         req = AuthorizerRequest(
           action_code: code,
-          pragma_name: arg3.get,
+          pragma_name: arg3.get(""),
           pragma_arg: arg4)
       of read, update:
         req = AuthorizerRequest(
           action_code: code,
-          target_table_name: arg3.get,
-          column_name: arg4.get)
+          target_table_name: arg3.get(""),
+          column_name: arg4.get(""))
       of select, recursive, copy:
         req = AuthorizerRequest(action_code: code)
       of transaction:
         req = AuthorizerRequest(
           action_code: code,
-          transaction_operation: arg3.get)
+          transaction_operation: arg3.get(""))
       of attach:
         req = AuthorizerRequest(
           action_code: code,
-          filename: arg3.get)
+          filename: arg3.get(""))
       of detach:
         req = AuthorizerRequest(
           action_code: code,
-          database_name: arg3.get)
+          database_name: arg3.get(""))
       of alter_table:
         req = AuthorizerRequest(
           action_code: code,
-          alter_database_name: arg3.get,
-          alter_table_name: arg4.get)
+          alter_database_name: arg3.get(""),
+          alter_table_name: arg4.get(""))
       of reindex:
         req = AuthorizerRequest(
           action_code: code,
-          reindex_index_name: arg3.get)
+          reindex_index_name: arg3.get(""))
       of create_vtable, drop_vtable:
         req = AuthorizerRequest(
           action_code: code,
-          vtable_name: arg3.get,
-          module_name: arg4.get)
+          vtable_name: arg3.get(""),
+          module_name: arg4.get(""))
       of function:
         req = AuthorizerRequest(
           action_code: code,
           # no arg3
-          function_name: arg4.get)
+          function_name: arg4.get(""))
       of savepoint:
         req = AuthorizerRequest(
           action_code: code,
-          savepoint_operation: arg3.get,
-          savepoint_name: arg4.get)
+          savepoint_operation: arg3.get(""),
+          savepoint_name: arg4.get(""))
+      req.db_name = arg5.get("")
+      req.caller = arg6.get("")
       return callback(req)
   db.setAuthorizer(raw_callback)
 
